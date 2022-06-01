@@ -6,6 +6,3 @@ A folder where all my homework-codes go.
 
 ## PersonalCodes
 A directory of the less significant projects I've made to learn.
-
-### Test of branche functionality
-LOLO LOLOLOLOLOLLOLO
