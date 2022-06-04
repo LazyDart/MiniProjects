@@ -44,7 +44,6 @@ def drawboardinnit(size, height = 600, width = 600):
     cp = position()
     for i in range(size):
         board.append(["" for i in range(size)])
-        up()
         goto(cp[0], cp[1] + height*(i/size))
         setheading(0)
         down()
@@ -54,6 +53,7 @@ def drawboardinnit(size, height = 600, width = 600):
         setheading(90)
         down()
         fd(height)
+        up()
 
 def squares(type, width, height):
     typecol = {"s": "dim gray", "p": "orange", "a": "red", "h": "orange"}
@@ -114,20 +114,36 @@ def drawboard(size, height = 600, width = 600):
         for j in range(size):
             #i - wiersze, j - kolumny
             goto(cp[0] + width*j/size, cp[1] + height*i/size)
-            squares(board[i][j], width*1/size, height*1/size)
+            if board[i][j] != "":
+                squares(board[i][j], width*1/size, height*1/size)
             
-def setboard(stones):
+def setboard(stones, startapples):
+    l = len(board)
     if game_on == False:
         for i in range(stones):
-            board[randint(0, len(board)-1)][randint(len(board)-1)] = "s"
+            spos = [randint(0, l-1), randint(0, l-1)]
+            while board[spos[0]][spos[1]] != "":    
+                spos = [randint(0, l-1), randint(0, l-1)]
+            board[spos[0]][spos[1]] = "s"
+
+        for i in range(startapples):
+            appos = [randint(0, l-1), randint(0, l-1)]
+            while board[appos[0]][appos[1]] != "":    
+                appos = [randint(0, l-1), randint(0, l-1)]
+            board[appos[0]][appos[1]] = "a"
+            
+        pypos = [randint(0, l - 1), randint(0, l-1)]
+        while board[pypos[0]][pypos[1]] != "":
+            pypos = [randint(0, l - 1), randint(0, l-1)]
+        board[pypos[0]][pypos[1]] = "h"
+    print(board)
+    ### Zachowanie planszy w trakcie gry.
+
+#def slide():
+    #lolol = {"up": 90, "left": 180, "down": 270, "right": 0, "": 0}
+    #game_on = True
+    #while game_on == True:
         
-        pypos = board[randint(0, len(board)-1)][randint(0, len(board)-1)]
-        while pypos != "":
-            pypos = board[randint(0, len(board)-1)][randint(0, len(board)-1)]
-        
-        pypos = "h"
-        
-    
         
 
 
@@ -141,10 +157,8 @@ up()
 tracer(0, 0)
 
 drawboardinnit(20)
+setboard(5, 3)
 drawboard(20)
 
 update()
-#
-# lolol = {"up": 90, "left": 180, "down": 270, "right": 0, "": 0}
-
 exitonclick()
