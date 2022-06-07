@@ -186,7 +186,7 @@ def slide(headpos, speed = 0.3, speedmult = 1.10, newstones=1, newapples=1, size
 #Funkcja inicjująca rozgrywkę, wewnątrz której podane są wszystkie modyfikowalne parametry.
 # Size - Ilość pól, Height i width - rozmiar okienka, startstones/apples - startowa ilość jabłek i kamieni, newstones/apples - wzrost kamieni i jabłek co punkt, 
 # speed - bazowa prędkość węża, speedmult - przyrost prędkości węża za punkt.
-def play(size=16, height=1200, width=600, startstones=5, startapples=3, newstones=2, newapples=1, speed=0.3, speedmult=1.1):
+def play(size=16, height=600, width=600, startstones=5, startapples=3, newstones=2, newapples=1, speed=0.3, speedmult=1.1):
     drawboardinnit(size, height, width)
     setboard(False, startstones, startapples, 0, 0)
     slide(headpos, speed, speedmult, newstones, newapples, size, height, width)
