@@ -1,0 +1,543 @@
+---
+title: "**Znane Twarze i Ulubione Gatunki**"
+author: "Miłosz Tkacz"
+date: "2022-12-27"
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, message = FALSE, echo=FALSE}
+library("dplyr")
+library("stringr")
+library("DT")
+library("ggplot2")
+library("plotly")
+
+
+theme_set(theme_minimal())
+options(ggplot2.continuous.colour="gradient")
+options(ggplot2.continuous.fill = "gradient")
+
+```
+
+## **Eksploracyjna Analiza Danych Najlepiej Ocenianych Filmów na IMDB**
+
+<div>
+Wszystkie dane pochodzą z serwisu [Kaggle](https://www.kaggle.com/datasets/ashishjangra27/imdb-top-250-movies)
+Dzięki dla [Ashish Jangra](https://www.kaggle.com/ashishjangra27) za stworzenie zbioru danych.
+</div>
+<br>
+```{r data_import, echo=FALSE}
+top_movies <- read.csv("movies.csv")
+
+top_movies_for_dt <- top_movies
+
+
+# set the length you want to show
+char_length <- 20
+# cut long text and add ...
+show_text1 <- substr(top_movies_for_dt$cast_id, 1, char_length)
+long_text1 <- nchar(top_movies_for_dt$cast_id) > char_length
+show_text1[long_text1] <- paste0(show_text1[long_text1], "...")
+# add tooltip
+top_movies_for_dt$cast_id <- paste0('<span title="', top_movies_for_dt$cast_id,  '">', show_text1, '</span>')
+
+# cut long text and add ...
+show_text2 <- substr(top_movies_for_dt$cast_name, 1, char_length)
+long_text2 <- nchar(top_movies_for_dt$cast_name) > char_length
+show_text2[long_text2] <- paste0(show_text2[long_text2], "...")
+# add tooltip
+top_movies_for_dt$cast_name <- paste0('<span title="', top_movies_for_dt$cast_name, '">', show_text2, '</span>')
+
+
+
+datatable(top_movies_for_dt, escape = FALSE, options = list(pageLength = 10, scrollY = "500px", scrollX = TRUE, scrollCollapse = TRUE), extensions = "FixedColumns", 
+          )
+
+
+```
+<br>
+<div>
+Dataset składa się z podstawowych danych z platformy [IMDB](https://www.imdb.com/). Pośród nich, można znaleźć informacje na temat obsady, reżyserów i scenarzystów, co umożliwia mi odnalezienie największych gwiazd świata filmów. Swoje analizy wzbogaciłem również analizą danych o gatunkach filmów.
+</div>
+<br>
+
+### **Wstępna Analiza Danych Liczbowych**
+
+```{r, echo=FALSE}
+top_movies %>% 
+  select(rank, year, duration, imbd_votes, imdb_rating) -> for_corr_matrix
+
+cor(for_corr_matrix) #There is a NAN in duration variable
+
+cat("\n",
+      c("The movie with NAN in duration variable:", 
+      top_movies[is.na(top_movies["duration"])][3:4])
+      )
+
+```
+<br>
+<div>
+Natrafiając na braki danych, zamiast wykluczać je z kalkulacji, bardzo łatwo jest je zastąpić posiłkując się internetem. Tutaj powodem problemu jest niemiecki film "Das Boot" autorstwa Wolfganga Petersena. To film wojenny z 1981 roku trwający 149 minut.
+</div>
+<br>
+
+```{r, echo=FALSE}
+top_movies[top_movies$name == "Das Boot", "duration"] <- 149
+
+
+top_movies %>% 
+  select(rank, year, duration, imbd_votes, imdb_rating) -> for_corr_matrix
+
+cor(for_corr_matrix)
+
+```
+<br>
+<div>
+Poza oczywistym powiązaniem ze sobą oceny i pozycji w rankingu, żadna zmienna liczbowa nie wchodzi w silną korelację z innymi.
+</div>
+<br>
+
+### **Analiza danych o gatunkach filmów**
+```{r, echo=FALSE}
+
+unlist(str_split(top_movies$genre, pattern=",")) -> all_genres
+
+all_genres <- data.frame(table(all_genres))
+
+colnames(all_genres) <- c("Genre", "Frequency")
+
+(ggplot(all_genres, mapping=aes(x=reorder(Genre, -Frequency), y=Frequency, fill=Frequency)) + geom_col() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position="none") + xlab("Movie Genres") + ylab("Number of Movies in Top 250"))
+
+
+```
+<br>
+<div>
+Każdy film, ma przypisany do siebie przynajmniej jeden gatunek (choć najczęściej jest ich po kilka). Dramat jest najczęściej występującym gatunkiem wśród 250 filmów, aż 177 filmów jest przypisanych do tej kategorii. Jak widać, gatunki o najwyższym poziomie ogólności są usytuowane na pierwszym miejscu (Dramat, przygoda, kryminał, akcja, komedia itp.)
+
+Posłużywszy się większym Datasetem z większą ilością próbek niż 250, dałoby się obliczyć jak poszczególne powiązania gatunków wpływają na ich wyniki.
+</div>
+<br>
+```{r, echo=FALSE}
+
+top_movies %>% 
+  mutate(genre_list = str_split(genre, pattern=",")) -> top_movies
+```
+
+```{r, echo=FALSE}
+for_duration_plot <- data.frame()
+for_year_plot <- data.frame()
+for_rating_plot <- data.frame()
+for_votes_plot <- data.frame()
+
+for (movie_genre in all_genres$Genre) {
+  top_movies %>%
+    group_by(name) %>% 
+    filter(movie_genre %in% unlist(genre_list)) %>% 
+    select(rank, name, genre, duration, year, imdb_rating, imbd_votes) -> current_genre
+  
+  
+  # For Production Year
+  year_for_genre <- matrix(current_genre)[5]
+  year_for_genre <- data.frame(c(year_for_genre, movie_genre))
+  colnames(year_for_genre) <- c("Year", "Genre")
+  
+  for_year_plot <- rbind(for_year_plot, year_for_genre)
+  
+  # For Rating
+  rating_for_genre <- matrix(current_genre)[6]
+  rating_for_genre <- data.frame(c(rating_for_genre, movie_genre))
+  colnames(rating_for_genre) <- c("Rating", "Genre")
+  
+  for_rating_plot <- rbind(for_rating_plot, rating_for_genre)
+  
+  
+  # For Duration
+  durations_for_genre <- matrix(current_genre)[4]
+  durations_for_genre <- data.frame(c(durations_for_genre, movie_genre))
+  colnames(durations_for_genre) <- c("Duration", "Genre")
+  
+  for_duration_plot <- rbind(for_duration_plot, durations_for_genre) 
+  
+  
+  # For Number of Votes
+  votes_for_genre <- matrix(current_genre)[7]
+  votes_for_genre <- data.frame(c(votes_for_genre, movie_genre))
+  colnames(votes_for_genre) <- c("Votes", "Genre")
+  
+  for_votes_plot <- rbind(for_votes_plot, votes_for_genre)
+  
+
+}
+```
+
+
+#### **Gatunek, a rok produkcji**
+```{r, echo=FALSE}
+# library("RColorBrewer")
+# myColors <- brewer.pal(3, "Spectral")
+# names(myColors) <- levels(iris$Species)
+# custom_colors <- scale_colour_manual(name = "Species Names", values = myColors)
+
+
+for_year_plot$Genre <- as.factor(for_year_plot$Genre)
+ggplotly(ggplot(for_year_plot, mapping=aes(x=reorder(Genre, -(Year)), y=Year, fill=reorder(Genre, -(Year)))) 
+         + geom_boxplot() 
+         + theme( axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position="none") 
+         + xlab("Movie Genres") + ylab("Year of Production")
+)
+```
+<br>
+<div>
+Wykres przedstawia gatunki uporządkowane wg roku produkcji. Świetnie pokazuje w jakim czasie poszczególne gatunki zyskiwały serca widzów. Dobrym przykładem jest animacja, usytuowana na pierwszym miejscu, która wraz z rozwojem technologicznym niosącym ze sobą widowiskowość animacji, stanęła w świetle reflektorów.
+Szczególnie ciekawą pozycją, jest tu gatunek horrorów. Jak wiadomo horrory od lat produkuje się hurtowo, ale nieliczne z około lat 80 przetrwały próbę czasu i nadal cieszą się poważaniem.
+Filmy Noir usytuowane na ostatnim miejscu reprezentują gatunek, który od dłuższego czasu jest mniej popularny.
+</div>
+<br>
+
+#### **Gatunek, a ocena**
+```{r, echo=FALSE}
+ggplotly(ggplot(for_rating_plot, mapping=aes(x=reorder(Genre, -(Rating)), y=Rating, fill=reorder(Genre, -(Rating)))) + geom_boxplot() +xlab("Movie Genres") + theme(legend.position="none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)))
+```
+<br>
+<div>
+Na wykresie uporządkowano gatunki wg rosnącej średniej oceny. Rozstęp oceny w datasecie wynosi jedynie 1.3 punkty, w związku z tym nie da się przedstawić wiążącego wyniku.
+</div>
+<br>
+
+#### **Gatunek, a czas trwania**
+```{r, echo=FALSE}
+ggplotly(ggplot(for_duration_plot, mapping=aes(x=reorder(Genre, -(Duration)), y=Duration, fill=reorder(Genre, -(Duration)))) + geom_boxplot() + xlab("Movie Genres") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position="none"))
+```
+<br>
+<div>
+Wykres przedstawia gatunki uporządkowane wedle średniego czasu trwania. Można na nim zaobserwować wiele ciekawych zjawisk, międzyinnymi widać jak filmy o potencjalnie wysokim koszcie produkcji: animacje, fantasy. Mają krótki średni czas trwania. Do tego dochodzi też efekt, w którym filmy o lekkim charakterze (romans, family, comedy, musical, animation) mają krótki czas trwania. Natomiast filmy specjalizujące się trzymaniem w nieustannym napięciu (action, war) mogą pozwolić sobie na długi czas trwania. To samo dotyczy filmów które kojarzymy z powolnym tempem (biography, history).
+</div>
+<br>
+```{r, echo=FALSE}
+top_movies %>% 
+  filter(duration > 230 | duration < 75) %>%
+  select(rank, name, year, duration, genre) %>% 
+  datatable(options=list(dom="t"))
+
+
+```
+<br>
+<div>
+Kilka szczególnie krótkich i szczególnie długich filmów przykuło moją uwagę. Okazało się, że każdy z nich jest bardzo starym filmem. Zbadajmy czy jest różnica pomiędzy starymi, a nowymi filmami w kwestii czasu trwania.
+</div>
+<br>
+```{r, echo=FALSE, include=FALSE}
+top_movies %>% 
+  filter(year < 1960) %>% 
+  summarise("Mean_Duration" = round(mean(duration), 2), 
+            "Standard_deviation" = round(sd(duration), 2),
+            "Percentile: 5th" = round(quantile(duration, c(0.05)), 2),
+            "Percentile: 25th" = round(quantile(duration, c(0.25)), 2),
+            "Median" = round(quantile(duration, c(0.50)), 2),
+            "Percentile: 75th" = round(quantile(duration, c(0.75)), 2),
+            "Percentile: 95th" = round(quantile(duration, c(0.95)), 2)) -> dur_before_1960
+
+top_movies %>% 
+  filter(year > 1960) %>% 
+  summarise("Mean_Duration" = round(mean(duration), 2), 
+            "Standard_deviation" = round(sd(duration), 2),
+            "Percentile: 5th" = round(quantile(duration, c(0.05)), 2),
+            "Percentile: 25th" = round(quantile(duration, c(0.25)), 2),
+            "Median" = round(quantile(duration, c(0.50)), 2),
+            "Percentile: 75th" = round(quantile(duration, c(0.75)), 2),
+            "Percentile: 95th" = round(quantile(duration, c(0.95)), 2)) -> dur_after_1960
+
+age_dur_for_display <- as_tibble(cbind(nms = names(dur_before_1960), t(rbind(dur_before_1960, dur_after_1960))), .name_repair = "unique")
+
+colnames(age_dur_for_display) <- c("Metrics","Before 1960", "After 1960")
+```
+
+```{r, echo=FALSE}
+age_dur_for_display
+
+```
+<br>
+<div>
+Stare filmy, mają mniejszy średni czas trwania, chociaż rozstęp czasu trwania i odchylenie standardowe są dużo wyższe, co częściowo może być związane z tym, że rynek filmowy jeszcze się nie ustabilizował, a preferencje konsumentów nie były zupełnie jasne. Do tego dochodzą też koszty i trudności w produkcji itd itp.
+</div>
+<br>
+
+#### **Gatunek, a ilość głosów**
+```{r, echo=FALSE}
+options(scipen = 10000)
+binbon <- (ggplot(for_votes_plot, show.legend=FALSE, mapping=aes(x=reorder(Genre, -(Votes)), y=Votes, fill=reorder(Genre, -(Votes)))) + geom_boxplot() + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = 'none') + xlab("Movie Genres") + ylab("Number of Votes"))
+ggplotly(binbon)
+```
+
+<br>
+<div>
+A teraz czas na konkurs popularności: które gatunki otrzymały średnio największą ilość głosów. Jak się okazuje filmy z dużym nakładem i z dużym rozmachem produkcyjnym (Sci-Fi, Action, Crime, Adventure, Fantasy), które doskonale potrafią przykuć i zatrzymać uwagę widzów, cieszą się zdecydowanie najwyższym zainteresowaniem. Na najniższych z kolei miejscach figuruje kino bardziej niszowe (noir, musical) oraz filmy których widownia jest albo za młoda, albo za stara aby głosować (war, family).
+</div>
+<br>
+
+## **Największe gwiazdy spośród aktorów**
+
+```{r, echo=FALSE}
+top_movies %>% 
+  transmute(actors_list = str_split(cast_name, ",", simplify = TRUE)) -> all_actors
+
+top_movies %>% 
+  mutate(actors_list = str_split(cast_name, ",", simplify = TRUE)) -> top_movies
+
+
+all_actors_freq = data.frame(table(c(all_actors)))
+
+
+
+print(table(all_actors_freq$Freq)[1:8])
+
+all_actors_freq %>% 
+  filter(Freq > 1 & Freq < 65) -> all_valid_actors_freq
+
+```
+<br>
+<div>
+Spośród 3833 Aktorów w Datasecie 3421 Aktorów zagrała tylko w jednym filmie spośród 250 najlepszych. A spośród 412 osób będących wielokrotnie gwiazdą wielkiego kina, na pierwsze miejsce wysuwa się Robert De Niro grający w 9 spośród 250 najlepszych filmów. Ma on 2 filmy przewagi ponad każdym innym aktorem, a w dodatku w puli jego filmów nie znajduje się żadna seria filmowa.
+</div>
+<br>
+```{r, echo=FALSE}
+top_movies %>% 
+    group_by(name) %>% 
+    filter("Robert De Niro" %in% actors_list) %>% 
+    select(DeNiros_Movies = name, year, rank, imbd_votes, genre, director_name) -> de_niro_dt
+
+datatable(de_niro_dt, options=list(dom="t"))
+
+```
+
+```{r, echo=FALSE}
+movies_per_actor_list = list()
+
+for (actor in all_valid_actors_freq$actors_list) {
+  top_movies %>% 
+    group_by(name) %>% 
+    filter(actor %in% actors_list) %>% 
+    select(name) -> Movies
+  
+  names(Movies) <- actor
+  movies_per_actor_list = cbind(c(movies_per_actor_list, Movies), deparse.level = 1)
+  
+}
+
+```
+
+```{r, echo=FALSE}
+
+row.names(movies_per_actor_list) <- all_valid_actors_freq$actors_list
+
+
+
+actors_df <- data.frame(cbind(movies_per_actor_list, all_valid_actors_freq$Freq))
+
+
+
+```
+
+```{r, echo=FALSE}
+actors_df %>% 
+  filter(X2 > 3) %>% 
+  group_by(X2) %>% 
+  count(X2) -> df_for_best_actors
+
+barplot_1 <- ggplot(df_for_best_actors,  aes(x=as.integer(df_for_best_actors$X2), y=df_for_best_actors$n, fill=-df_for_best_actors$n))
+
+
+barplot_1 + geom_col()  + xlab("Count of Top 250 Movies having played") + ylab("Number of Actors") + theme(legend.position = "none")
+
+```
+<br>
+<div>
+Rozkład ilości aktorów z liczbą filmów 4 lub większą. Troszkę przypomina rozkład Pareto 
+</div>
+<br>
+```{r, echo=FALSE}
+colnames(actors_df) <- c("Movies_Played_in", "Movie_Count")
+actors_df %>% 
+  filter(Movie_Count > 3) %>%
+  arrange(desc(Movie_Count)) %>% 
+  datatable()
+
+
+
+
+
+```
+
+
+
+## **Gwiazdy kina wśród reżyserów**
+```{r, echo=FALSE}
+top_movies %>% 
+  transmute(directors_list = str_split(director_name, ",", simplify = TRUE)) -> all_directors
+
+top_movies %>% 
+  mutate(directors_list = str_split(director_name, ",", simplify = TRUE)) -> top_movies
+
+
+all_directors_freq = data.frame(table(c(all_directors)))
+
+
+
+print(table(all_directors_freq$Freq)[1:7])
+
+all_directors_freq %>% 
+  filter(Freq < 400) -> all_valid_directors_freq
+
+```
+<br>
+<div>
+Spośród 177 reżyserów 128 zrobiło tylko 1 film. Tutaj na podium stanęło aż 7 twórców!
+</div>
+<br>
+```{r, echo=FALSE}
+movies_per_director_list = list()
+
+for (director in all_valid_directors_freq$directors_list) {
+  top_movies %>% 
+    group_by(name) %>% 
+    filter(director %in% directors_list) %>% 
+    select(name) -> Movies
+  
+  names(Movies) <- director
+  movies_per_director_list = cbind(c(movies_per_director_list, Movies), deparse.level = 1)
+  
+}
+
+```
+
+```{r, echo=FALSE}
+
+row.names(movies_per_director_list) <- all_valid_directors_freq$directors_list
+
+
+
+directors_df <- data.frame(cbind(movies_per_director_list, all_valid_directors_freq$Freq))
+
+
+
+```
+
+```{r, echo=FALSE}
+directors_df %>% 
+  filter(X2 > 1) %>% 
+  group_by(X2) %>% 
+  count(X2) -> df_for_best_directors
+
+barplot_1 <- ggplot(df_for_best_directors, aes(x=as.integer(df_for_best_directors$X2), y=df_for_best_directors$n, fill=-df_for_best_directors$n))
+
+
+barplot_1 + geom_col() + xlab("Count of directed Top 250 Movies") + ylab("Number of Directors") + theme(legend.position = "none")
+
+```
+<br>
+<div>
+Tych nazwisk nie trzeba nikomu przedstawiać. Zarówno twórcy, jak i ich filmy nieustannie pojawiają się jako sztandarowe przykłady klasyki kina.
+</div>
+<br>
+```{r, echo=FALSE}
+colnames(directors_df) <- c("Directed_Movies", "Movie_Count")
+directors_df %>% 
+  filter(Movie_Count > 5) %>% 
+  datatable(options=list(dom="t"))
+  
+```
+
+
+## **Gwiazdy kina wśród scenarzystów**
+```{r, echo=FALSE}
+top_movies %>% 
+  transmute(writers_list = str_split(writter_name, ",", simplify = TRUE)) -> all_writers
+
+top_movies %>% 
+  mutate(writers_list = str_split(writter_name, ",", simplify = TRUE)) -> top_movies
+
+
+all_writers_freq = data.frame(table(c(all_writers)))
+
+
+
+print(table(all_writers_freq$Freq)[1:7])
+
+all_writers_freq %>% 
+  filter(Freq < 100) -> all_valid_writers_freq
+
+```
+<br>
+```{r, echo=FALSE}
+movies_per_writer_list = list()
+
+for (writer in all_valid_writers_freq$writers_list) {
+  top_movies %>% 
+    group_by(name) %>% 
+    filter(writer %in% writers_list) %>% 
+    select(name) -> Movies
+  
+  names(Movies) <- writer
+  movies_per_writer_list = cbind(c(movies_per_writer_list, Movies), deparse.level = 1)
+  
+}
+
+```
+
+```{r, echo=FALSE}
+
+row.names(movies_per_writer_list) <- all_valid_writers_freq$writers_list
+
+
+
+writers_df <- data.frame(cbind(movies_per_writer_list, all_valid_writers_freq$Freq))
+
+
+```
+
+```{r, echo=FALSE}
+writers_df %>% 
+  filter(X2 > 1) %>% 
+  group_by(X2) %>% 
+  count(X2) -> df_for_best_writers
+
+barplot_1 <- ggplot(df_for_best_writers, show.legend=FALSE,aes(x=as.integer(df_for_best_writers$X2), y=df_for_best_writers$n, fill=-df_for_best_writers$n))
+
+
+barplot_1 + geom_col() + xlab("Count of written Top 250 Movies") + ylab("Number of Writers") + theme(legend.position = "none")
+
+
+
+```
+<br>
+<div>
+Rozkład u scenarzystów tak samo jak na pozostałych pozycjach przypomina nieco rozkład pareto, może przy większym datasecie dałoby się doszukiwać jakiejś zależności.
+</div>
+<br>
+```{r, echo=FALSE}
+colnames(writers_df) <- c("Written_Movies", "Movie_Count")
+
+writers_df %>% 
+  filter(Movie_Count > 2) %>%
+  arrange(desc((Written_Movies))) %>% 
+  datatable(options = list(order = list(list(2, 'desc'))))
+
+```
+<br>
+<div>
+Wśród scenarzystów, możemy zaobserwować takie perły jak Kubrick, Kurosawa i Nolan. Którzy zasłynęli zarówno jako reżyserowie jak i scenarzyści.
+</div>
+<br>
+
+### Dziękuję za uwagę!
+
+<br> <br> <br> <br> <br> <br>
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>
